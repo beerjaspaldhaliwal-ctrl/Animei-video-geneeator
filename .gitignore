@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+settings.json
+constraints.txt
+projects/
+models/
+loras/*
+!loras/README.txt
+.gradio/
