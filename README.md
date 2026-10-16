@@ -30,19 +30,31 @@ You get an `episode.mp4` (720p by default) and an `episode.srt` subtitle file fo
 * **RAM:** 16 GB minimum, 32 GB recommended (needed for the AI video models)
 * **Disk space:** about 15 GB for the basic models, plus ~28 GB for LTX-Video and ~34 GB for Wan 2.2 if you use AI animation
 * **Latest AMD Adrenalin driver**: update it from [amd.com/support](https://www.amd.com/en/support) before installing
-* **Python 3.12** from [python.org](https://www.python.org/downloads/windows/). Tick **"Add python.exe to PATH"**
-  while installing. (Python 3.13 doesn't work yet because of the Kokoro voice library.)
+* **Linux only:** Python 3.10–3.12 (on Windows the installer brings its own Python)
 
 ## Install (Windows)
 
-1. Click the green **Code** button on GitHub → **Download ZIP**, and unzip it somewhere simple like `C:\AnimeStudio`.
-2. Double-click **`install_windows.bat`**.
-3. When it asks for your graphics card, type **`1`** (AMD Radeon RX 7000 series, which includes the RX 7600 XT) and press Enter.
-4. Wait. It downloads PyTorch for AMD (ROCm) and the rest (a few GB). At the end it should list
-   `AMD Radeon RX 7600 XT` under "GPUs found".
-5. Double-click **`run_windows.bat`**. Your browser opens Anime Studio at `http://127.0.0.1:7860`.
+**Easiest: the Setup program**
 
-Keep the black window open while you use the app; close it to quit.
+1. Download **[AnimeStudio-Setup.exe](https://github.com/beerjaspaldhaliwal-ctrl/Animei-video-geneeator/raw/ccr-8e13bd6b-f1qw3j/AnimeStudio-Setup.exe)** and double-click it.
+2. If Windows shows *"Windows protected your PC"*, click **More info → Run anyway**
+   (the installer is free and not code-signed, so Windows doesn't know it yet).
+3. Click **Next**, keep the folder `C:\AnimeStudio` (or pick another drive with 30 GB+ free),
+   choose your graphics card (**AMD Radeon RX 7000 series** for the RX 7600 XT) and click **Install**.
+4. A black window downloads a private copy of Python, PyTorch for your graphics card and the
+   libraries (a few GB, 10–30 minutes). At the end it lists your graphics card under "GPUs found".
+   Press any key to close it.
+5. Click **Finish**. Next time, start Anime Studio with the **desktop icon**.
+
+The Start menu also gets *My anime projects*, *Repair or update Anime Studio* and *Uninstall*.
+To update to a new version, just run the newer Setup over the old one; your projects are kept.
+
+**Without the Setup program:** download the ZIP (green **Code** button → **Download ZIP**), unzip it
+to `C:\AnimeStudio`, double-click **`install_windows.bat`**, type **`1`** for an RX 7000 card, then
+start with **`run_windows.bat`**.
+
+Anime Studio opens in your browser at `http://127.0.0.1:7860`. Keep the black window open while you
+use it; close it to quit.
 
 ## Install (Linux)
 
@@ -149,7 +161,7 @@ voice, changing every 2 frames like real TV anime ("kuchipaku"). The rest of the
   Use `| animate: ai` only on the shots that need it.
 * **Japanese voice acting:** pick `ja-JP-NanamiNeural` / `ja-JP-KeitaNeural` (free Microsoft
   Edge voices, need internet) and write the dialogue in Japanese. Offline Kokoro Japanese voices
-  (`jf_alpha`, ...) need one extra command: `venv\Scripts\pip install "misaki[ja]"`.
+  (`jf_alpha`, ...) need one extra command in the Anime Studio folder: `venv\Scripts\pip install "misaki[ja]"`.
 * **Your own music:** put files in `projects/<your series>/audio/` and write `music: my_song.mp3`.
 
 ## Story assistant (optional)
@@ -175,8 +187,8 @@ models/                          downloaded AI models (safe to delete, re-downlo
 
 ## Troubleshooting
 
-* **"GPUs found: NONE":** update the AMD Adrenalin driver, restart, and run
-  `install_windows.bat` again (choose `1`). Check that you have Python **3.12**.
+* **"GPUs found: NONE":** update the AMD Adrenalin driver, restart, then run
+  *Start menu → Anime Studio → Repair or update Anime Studio* (or `install_windows.bat`) and choose `1`.
 * **Ryzen 7000/9000 CPUs (e.g. Ryzen 7 9700X) have built-in graphics** called "AMD Radeon(TM) Graphics".
   Anime Studio automatically uses your graphics card instead (the black window prints which GPU it uses).
   If you still get errors like `HIP error` or `invalid device function`, turn the built-in graphics off
@@ -215,6 +227,9 @@ If you plan to earn money from your anime, use your own or royalty-free music an
 pip install pytest
 python -m pytest tests        # runs in draft mode, no GPU or model downloads needed
 ```
+
+To rebuild `AnimeStudio-Setup.exe` after changing the code: `installer/build_installer.sh`
+(needs NSIS: `sudo apt install nsis` on Linux, or install NSIS on Windows and run `makensis`).
 
 The code lives in `anime_studio/`: `script_parser.py` (screenplay format), `pipeline.py`
 (script → keyframes → clips → audio → episode), `editor.py` (timeline, mixing, subtitles,
