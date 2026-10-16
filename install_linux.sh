@@ -39,7 +39,7 @@ for p in ("torch", "torchvision", "torchaudio"):
 EOF
 python -m pip install -r requirements.txt -c constraints.txt
 
-python -c "import torch; ok = torch.cuda.is_available(); print('GPU ready:', torch.cuda.get_device_name(0) if ok else 'NOT FOUND (running on CPU)')"
+python -c "import torch; n = torch.cuda.device_count() if torch.cuda.is_available() else 0; print('GPUs found:', ', '.join(torch.cuda.get_device_name(i) for i in range(n)) if n else 'NONE (running on CPU)')"
 if [ "$GPU" = "1" ] || [ "$GPU" = "2" ]; then
     if ! id -nG | grep -qw render; then
         echo

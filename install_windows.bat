@@ -68,7 +68,7 @@ if errorlevel 1 goto :fail
 
 echo.
 echo Checking your graphics card...
-python -c "import torch; ok = torch.cuda.is_available(); print('GPU ready:', torch.cuda.get_device_name(0) if ok else 'NOT FOUND (running on CPU)')"
+python -c "import torch; n = torch.cuda.device_count() if torch.cuda.is_available() else 0; print('GPUs found:', ', '.join(torch.cuda.get_device_name(i) for i in range(n)) if n else 'NONE (running on CPU)')"
 
 echo.
 echo ==========================================================

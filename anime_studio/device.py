@@ -4,8 +4,46 @@ import gc
 import hashlib
 import json
 import logging
+import os
+import subprocess
+import sys
 
 log = logging.getLogger(__name__)
+
+_GPU_PROBE = """
+import json, torch
+gpus = []
+if torch.cuda.is_available():
+    for i in range(torch.cuda.device_count()):
+        p = torch.cuda.get_device_properties(i)
+        gpus.append([i, p.name, int(getattr(p, "is_integrated", 0)), p.multi_processor_count, p.total_memory])
+print(json.dumps(gpus))
+"""
+
+
+def isolate_discrete_gpu() -> str | None:
+    """Make PyTorch use the graphics card, not the CPU's built-in graphics.
+
+    Ryzen 7000/9000 CPUs have a small integrated GPU that can show up as
+    device 0, and PyTorch would pick it. We list the GPUs in a separate
+    process and expose only the strongest one. Must run before torch is
+    imported. Returns the chosen GPU name, or None if nothing was changed.
+    """
+    if any(k in os.environ for k in ("HIP_VISIBLE_DEVICES", "CUDA_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES")):
+        return None
+    try:
+        result = subprocess.run([sys.executable, "-c", _GPU_PROBE], capture_output=True, text=True, timeout=180)
+        gpus = json.loads(result.stdout.strip().splitlines()[-1])
+    except Exception as exc:  # no torch, probe crashed, ...
+        log.debug("GPU probe failed: %s", exc)
+        return None
+    if len(gpus) < 2:
+        return None
+    # Prefer non-integrated, then most compute units, then most memory.
+    best = max(gpus, key=lambda g: (not g[2], g[3], g[4]))
+    os.environ["HIP_VISIBLE_DEVICES"] = os.environ["CUDA_VISIBLE_DEVICES"] = str(best[0])
+    log.info("Several GPUs found %s; using %s", [g[1] for g in gpus], best[1])
+    return best[1]
 
 
 def gpu_info() -> dict:

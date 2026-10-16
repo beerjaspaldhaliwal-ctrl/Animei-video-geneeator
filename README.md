@@ -37,8 +37,8 @@ You get an `episode.mp4` (720p by default) and an `episode.srt` subtitle file fo
 1. Click the green **Code** button on GitHub → **Download ZIP**, and unzip it somewhere simple like `C:\AnimeStudio`.
 2. Double-click **`install_windows.bat`**.
 3. When it asks for your graphics card, type **`1`** (AMD Radeon RX 7000 series, which includes the RX 7600 XT) and press Enter.
-4. Wait. It downloads PyTorch for AMD (ROCm) and the rest (a few GB). At the end it should say
-   `GPU ready: AMD Radeon RX 7600 XT`.
+4. Wait. It downloads PyTorch for AMD (ROCm) and the rest (a few GB). At the end it should list
+   `AMD Radeon RX 7600 XT` under "GPUs found".
 5. Double-click **`run_windows.bat`**. Your browser opens Anime Studio at `http://127.0.0.1:7860`.
 
 Keep the black window open while you use the app; close it to quit.
@@ -157,8 +157,15 @@ models/                          downloaded AI models (safe to delete, re-downlo
 
 ## Troubleshooting
 
-* **"GPU ready: NOT FOUND":** update the AMD Adrenalin driver, restart, and run
+* **"GPUs found: NONE":** update the AMD Adrenalin driver, restart, and run
   `install_windows.bat` again (choose `1`). Check that you have Python **3.12**.
+* **Ryzen 7000/9000 CPUs (e.g. Ryzen 7 9700X) have built-in graphics** called "AMD Radeon(TM) Graphics".
+  Anime Studio automatically uses your graphics card instead (the black window prints which GPU it uses).
+  If you still get errors like `HIP error` or `invalid device function`, turn the built-in graphics off
+  in the BIOS (usually *Advanced → AMD CBS → NBIO → GFX Configuration → iGPU: Disabled*; the exact
+  place depends on your motherboard). Keep your monitor plugged into the graphics card.
+* **Missing DLL errors on Windows:** install the latest
+  [Microsoft Visual C++ Redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
 * **Out of memory:** Settings → tick **Low VRAM mode**, close games and browsers using the GPU,
   or lower the video size.
 * **Slow:** the first run of each step is slow because models download. Use Draft mode while

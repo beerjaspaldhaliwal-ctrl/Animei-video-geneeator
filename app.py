@@ -27,7 +27,9 @@ def main():
     for noisy in ("httpx", "urllib3", "httpcore", "gradio"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
-    from anime_studio.device import gpu_info
+    from anime_studio.device import gpu_info, isolate_discrete_gpu
+
+    isolate_discrete_gpu()  # before torch loads: skip the CPU's built-in graphics
     from anime_studio.ui import build_ui
 
     info = gpu_info()
