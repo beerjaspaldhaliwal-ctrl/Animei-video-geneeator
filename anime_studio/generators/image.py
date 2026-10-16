@@ -47,6 +47,22 @@ def placeholder_image(prompt: str, width: int, height: int, seed: int = 0, label
     return img
 
 
+def _draft_inpaint(image: Image.Image, mask: Image.Image, prompt: str) -> Image.Image:
+    """Draft mode: draw a simple cartoon mouth inside the mask."""
+    out = image.convert("RGB").copy()
+    box = mask.getbbox()
+    if box:
+        x0, y0, x1, y1 = box
+        cx, cy, w = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) * 0.35
+        opening = 0.0 if prompt.startswith("closed") else 0.25 if prompt.startswith("parted") else 0.6
+        draw = ImageDraw.Draw(out)
+        if opening:
+            draw.ellipse([cx - w / 2, cy - w * opening / 2, cx + w / 2, cy + w * opening / 2], fill=(120, 30, 40))
+        else:
+            draw.line([cx - w / 2, cy, cx + w / 2, cy], fill=(90, 30, 30), width=max(2, int(w / 10)))
+    return out
+
+
 # ---------------------------------------------------------------- SDXL
 def _load_sdxl(settings: dict):
     import torch
@@ -177,12 +193,50 @@ class ImageEngine:
         if self.draft:
             return placeholder_image(prompt, width, height, seed, label)
 
+        pipe, kwargs = self._prepare(prompt, negative, seed, reference, reference_scale, loras)
+        return pipe(width=width, height=height, **kwargs).images[0]
+
+    def inpaint(
+        self,
+        image: Image.Image,
+        mask: Image.Image,
+        prompt: str,
+        negative: str,
+        seed: int,
+        strength: float = 0.75,
+        reference: str | None = None,
+        reference_scale: float | None = None,
+        loras: list[tuple[str, float]] = (),
+    ) -> Image.Image:
+        """Redraw the white part of `mask` (used for lip sync mouth shapes)."""
+        if self.draft:
+            return _draft_inpaint(image, mask, prompt)
+        from diffusers import StableDiffusionXLInpaintPipeline
+
+        pipe, kwargs = self._prepare(prompt, negative, seed, reference, reference_scale, loras)
+        if getattr(pipe, "_anime_inpaint", None) is None:
+            pipe._anime_inpaint = StableDiffusionXLInpaintPipeline.from_pipe(pipe)  # shares the loaded model
+            pipe._anime_inpaint.set_progress_bar_config(disable=True)
+        result = pipe._anime_inpaint(
+            image=image, mask_image=mask, width=image.width, height=image.height, strength=strength, **kwargs
+        )
+        return result.images[0]
+
+    def _prepare(self, prompt, negative, seed, reference, reference_scale, loras):
         import torch
 
         pipe = MODELS.get("sdxl:" + str(self.cache_key()), lambda: _load_sdxl(self.settings))
         _apply_loras(pipe, list(loras))
         embeds = _encode_long_prompt(pipe, prompt, negative)
-        kwargs = {}
+        kwargs = {
+            "prompt_embeds": embeds[0],
+            "negative_prompt_embeds": embeds[1],
+            "pooled_prompt_embeds": embeds[2],
+            "negative_pooled_prompt_embeds": embeds[3],
+            "num_inference_steps": int(self.settings["image_steps"]),
+            "guidance_scale": float(self.settings["image_guidance"]),
+            "generator": torch.Generator("cpu").manual_seed(int(seed)),
+        }
         if pipe._anime_ip_adapter:
             if reference:
                 ref_img = Image.open(reference).convert("RGB")
@@ -193,17 +247,4 @@ class ImageEngine:
                 ref_img = Image.new("RGB", (224, 224))
                 pipe.set_ip_adapter_scale(0.0)
             kwargs["ip_adapter_image"] = ref_img
-        generator = torch.Generator("cpu").manual_seed(int(seed))
-        result = pipe(
-            prompt_embeds=embeds[0],
-            negative_prompt_embeds=embeds[1],
-            pooled_prompt_embeds=embeds[2],
-            negative_pooled_prompt_embeds=embeds[3],
-            width=width,
-            height=height,
-            num_inference_steps=int(self.settings["image_steps"]),
-            guidance_scale=float(self.settings["image_guidance"]),
-            generator=generator,
-            **kwargs,
-        )
-        return result.images[0]
+        return pipe, kwargs

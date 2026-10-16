@@ -34,6 +34,8 @@ DEFAULTS = {
     "wan_model": "Wan-AI/Wan2.2-TI2V-5B-Diffusers",
     "video_steps": 30,
     "video_seconds": 4.0,
+    # Lip sync: the talking character's mouth moves with the voice (picture shots)
+    "lip_sync": True,
     # Music and sound effects
     "music_model": "facebook/musicgen-small",
     "sfx_model": "cvssp/audioldm-s-full-v2",

@@ -4,6 +4,8 @@ import logging
 import zlib
 from pathlib import Path
 
+from PIL import Image
+
 from .camera import auto_camera
 from .config import APP_DIR
 from .device import MODELS, content_hash
@@ -12,6 +14,7 @@ from .generators.audio import MusicEngine, SfxEngine, synth_music, synth_sfx
 from .generators.image import ImageEngine
 from .generators.video import VideoEngine
 from .generators.voice import VoiceEngine
+from .lipsync import MOUTH_STATES, detect_faces, mouth_variants, pick_face
 from .media import audio_duration, save_frames_as_video, save_wav
 from .project import Character, Project
 from .prompts import character_sheet_prompt, shot_characters, shot_prompt
@@ -133,6 +136,8 @@ class Studio:
 
     def motion_prompt(self, shot: Shot) -> str:
         base = shot.motion or shot.description
+        if self.on_screen_speaker(shot):
+            base += ", the character is talking"
         return f"anime style animation, {base}, smooth natural motion, consistent character, high quality"
 
     def make_clip(self, script: Script, shot: Shot, force: bool = False) -> Path:
@@ -151,6 +156,70 @@ class Studio:
             return None
         path = self.clip_path(keyframe, shot)
         return path if path.exists() else None
+
+    # ------------------------------------------------------------ lip sync
+    def on_screen_speaker(self, shot: Shot) -> Character | None:
+        """The first character who both appears in the shot and speaks in it."""
+        on_screen = shot_characters(self.series, shot)
+        for line in shot.lines:
+            if line.kind == "dialogue" and not line.is_narration:
+                char = self.series.character(line.speaker)
+                if char and any(char is c for c in on_screen):
+                    return char
+        return None
+
+    def lipsync_character(self, shot: Shot) -> Character | None:
+        if (
+            self.settings.get("draft_mode")
+            or not self.settings.get("lip_sync", True)
+            or shot.lipsync == "off"
+            or self.animate_mode(shot) == "ai"
+        ):
+            return None
+        return self.on_screen_speaker(shot)
+
+    def make_mouths(self, script: Script, shot: Shot, keyframe: Path) -> dict[str, Path] | None:
+        """Closed / half / open mouth versions of the keyframe, or None if there's nothing to lip sync."""
+        char = self.lipsync_character(shot)
+        if char is None:
+            return None
+        style = (self.series.style_prompt, self.series.quality_prompt)
+        key = content_hash(
+            "mouths-v1", self.images.cache_key(), _file_tag(keyframe), shot.lipsync or "auto", char.appearance, style
+        )
+        folder = self.project.cache_dir("mouths")
+        paths = {state: folder / f"{key}_{state}.png" for state in MOUTH_STATES}
+        no_face = folder / f"{key}_noface"
+        if all(p.exists() for p in paths.values()):
+            return paths
+        if no_face.exists():
+            return None
+        try:
+            image = Image.open(keyframe).convert("RGB")
+            face = pick_face(detect_faces(image), shot.lipsync or "auto")
+            if face is None:
+                no_face.touch()  # e.g. seen from behind; don't look again
+                return None
+            spec = self.keyframe_spec(script, shot)
+            ref = self.project.abs_path(char.reference_image)
+            lora = self._lora_path(char)
+            prompt = ", ".join(p for p in (char.lora_trigger if lora else "", char.appearance, "face", *style) if p)
+            variants = mouth_variants(
+                self.images,
+                image,
+                face,
+                prompt,
+                spec["negative"],
+                spec["seed"],
+                reference=str(ref) if ref else None,
+                loras=[(str(lora), char.lora_weight)] if lora else [],
+            )
+        except Exception as exc:
+            self._warn(f"Lip sync skipped for {shot.id} ({exc})")
+            return None
+        for state, img in variants.items():
+            img.save(paths[state])
+        return paths
 
     # ------------------------------------------------------------ audio
     def voice_for(self, line: Line) -> tuple[str, float]:
@@ -253,10 +322,14 @@ class Studio:
         if not shots:
             raise ValueError("The script has no shots yet.")
 
-        # 1. keyframes
+        # 1. keyframes (+ mouth shapes for lip sync)
+        mouths = {}
         for i, shot in enumerate(shots):
             report(0.02 + 0.40 * i / len(shots), f"Drawing keyframe {i + 1}/{len(shots)} ({shot.id})")
-            self.make_keyframe(script, shot)
+            keyframe = self.make_keyframe(script, shot)
+            if self.lipsync_character(shot):
+                report(0.02 + 0.40 * (i + 0.5) / len(shots), f"Drawing mouth shapes for lip sync ({shot.id})")
+                mouths[shot.id] = self.make_mouths(script, shot, keyframe)
 
         # 2. AI animation (only shots set to "ai")
         ai_shots = [s for s in shots if self.animate_mode(s) == "ai"]
@@ -277,6 +350,7 @@ class Studio:
         plans: dict[str, ShotPlan] = {}
         for shot in shots:
             events = []
+            lip_char = self.lipsync_character(shot) if mouths.get(shot.id) else None
             for line in shot.lines:
                 done += 1
                 report(
@@ -285,6 +359,7 @@ class Studio:
                 if line.kind == "dialogue":
                     path = self.make_line_audio(line)
                     timed = TimedLine(0, 0, line.text, line.speaker, line.is_narration, path)
+                    timed.lipsync = lip_char is not None and self.series.character(line.speaker) is lip_char
                     events.append(("line", timed, audio_duration(path)))
                 else:
                     path = self.make_sfx(line.text)
@@ -296,6 +371,7 @@ class Studio:
                 camera="still" if mode == "still" else auto_camera(shot),
                 clip=clips.get(shot.id),
                 seed=self.shot_seed(shot),
+                mouths=mouths.get(shot.id),
             )
             layout_shot(plan, events, shot.seconds)
             plans[shot.id] = plan

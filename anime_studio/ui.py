@@ -43,6 +43,7 @@ SFX: door slamming
 * Shot options: `camera:` static, zoom_in, zoom_out, pan_left, pan_right, pan_up, pan_down, shake
   · `seconds:` minimum length · `animate:` motion / ai / still · `motion:` what moves (for AI animation)
   · `characters:` who is on screen (default: names mentioned in the shot) · `seed:` picture variation
+  · `lipsync:` auto / off / left / right (which face talks when two people are on screen)
 * **NAME: text** is dialogue. Add an emotion in brackets: `(happy)`, `(angry)`, `(whisper)`, `(excited)`, `(sad)`.
 * **SFX:** makes a sound effect. Lines starting with `#` are notes and are ignored.
 * **Your own audio:** put files in the series' `audio` folder and write `music: my_song.mp3` or `SFX: door.wav`.
@@ -430,13 +431,37 @@ def shot_details(folder, episode, shot_id):
     spec = studio.keyframe_spec(script, shot)
     cast = ", ".join(c.name for c in shot_characters(project.series, shot)) or "none"
     ref = "yes" if spec["reference"] else "no"
+    talker = studio.lipsync_character(shot)
+    lips = talker.name if talker else "off"
     info = (
         f"**Characters:** {cast} · **reference picture used:** {ref} · **seed:** {spec['seed']} · "
-        f"**animation:** {studio.animate_mode(shot)}\n\n**Prompt:** {spec['prompt']}"
+        f"**animation:** {studio.animate_mode(shot)} · **lip sync:** {lips}\n\n**Prompt:** {spec['prompt']}"
     )
     keyframe = studio.existing_keyframe(script, shot)
     clip = studio.existing_clip(script, shot)
     return info, str(keyframe) if keyframe else None, str(clip) if clip else None
+
+
+def lipsync_preview(folder, episode, shot_id, progress=gr.Progress()):
+    project = _need(folder)
+    studio = _studio(project)
+    script = studio.parse(episode)
+    shot = script.find_shot(shot_id or "")
+    if not shot:
+        raise gr.Error("Pick a shot first.")
+    talker = studio.lipsync_character(shot)
+    if talker is None:
+        raise gr.Error(
+            "No lip sync in this shot: nobody who is on screen speaks (or lip sync is off / it's an AI clip)."
+        )
+    progress(0.05, desc="Drawing closed, half-open and open mouths...")
+    try:
+        mouths = studio.make_mouths(script, shot, studio.make_keyframe(script, shot))
+    except Exception as exc:
+        raise _friendly(exc)
+    if not mouths:
+        raise gr.Error(f"Couldn't find {talker.name}'s face in this picture. Try another version of the keyframe.")
+    return [(str(mouths[s]), f"{talker.name}: {s} mouth") for s in ("closed", "half", "open")]
 
 
 def shot_variants(folder, episode, shot_id, draft, progress=gr.Progress()):
@@ -497,7 +522,9 @@ def animate_shot(folder, episode, shot_id, text, progress=gr.Progress()):
 
 
 # ------------------------------------------------------------------ episode
-def make_episode(folder, episode, text, draft, animate_all, burn, title_card, end_card, progress=gr.Progress()):
+def make_episode(
+    folder, episode, text, draft, animate_all, burn, title_card, end_card, lip_sync, progress=gr.Progress()
+):
     project = _need(folder)
     if not episode:
         raise gr.Error("Pick an episode on the Script tab.")
@@ -509,6 +536,7 @@ def make_episode(folder, episode, text, draft, animate_all, burn, title_card, en
         burn_subtitles=bool(burn),
         title_card=bool(title_card),
         end_card=bool(end_card),
+        lip_sync=bool(lip_sync),
     )
     try:
         (project.root / "audio").mkdir(exist_ok=True)
@@ -524,6 +552,7 @@ def make_episode(folder, episode, text, draft, animate_all, burn, title_card, en
 # ------------------------------------------------------------------ settings
 SETTING_FIELDS = [
     ("low_vram", "Low VRAM mode (slower, use if you get 'out of memory')"),
+    ("lip_sync", "Lip sync (mouths move when characters talk)"),
     ("image_model", "Image model (Hugging Face id or path to an SDXL .safetensors file)"),
     ("image_steps", "Image steps (more = better & slower)"),
     ("image_guidance", "Image guidance (CFG)"),
@@ -715,6 +744,8 @@ def build_ui() -> gr.Blocks:
                 with gr.Row():
                     variants_btn = gr.Button("🎲 Try 4 new versions")
                     animate_btn = gr.Button("🎞️ Animate this shot with AI (slow)")
+                    lips_btn = gr.Button("👄 Preview lip sync mouths")
+                lips_gallery = gr.Gallery(label="Lip sync mouth shapes", columns=3, height=260)
                 variants_gallery = gr.Gallery(label="Click the version you like", columns=4, height=300)
                 variant_seeds = gr.State([])
                 variant_pick = gr.State(None)
@@ -732,6 +763,7 @@ def build_ui() -> gr.Blocks:
                     ep_burn = gr.Checkbox(value=bool(SETTINGS.get("burn_subtitles")), label="Subtitles on video")
                     ep_title = gr.Checkbox(value=bool(SETTINGS.get("title_card")), label="Title card")
                     ep_end = gr.Checkbox(value=bool(SETTINGS.get("end_card")), label="'To be continued' card")
+                    ep_lips = gr.Checkbox(value=bool(SETTINGS.get("lip_sync", True)), label="Lip sync")
                 make_btn = gr.Button("🎬 Make episode", variant="primary", size="lg")
                 episode_video = gr.Video(label="Your episode", interactive=False)
                 episode_files = gr.File(label="Download", file_count="multiple", interactive=False)
@@ -835,10 +867,11 @@ def build_ui() -> gr.Blocks:
             use_variant, [project_dd, ep_dd, shot_dd, script_box, variant_seeds, variant_pick], script_box
         ).then(shot_details, [project_dd, ep_dd, shot_dd], [shot_info, shot_image, shot_video])
         animate_btn.click(animate_shot, [project_dd, ep_dd, shot_dd, script_box], [shot_video, script_box])
+        lips_btn.click(lipsync_preview, [project_dd, ep_dd, shot_dd], lips_gallery)
 
         make_btn.click(
             make_episode,
-            [project_dd, ep_dd, script_box, ep_draft, ep_ai, ep_burn, ep_title, ep_end],
+            [project_dd, ep_dd, script_box, ep_draft, ep_ai, ep_burn, ep_title, ep_end, ep_lips],
             [episode_video, episode_files, episode_log],
         )
 

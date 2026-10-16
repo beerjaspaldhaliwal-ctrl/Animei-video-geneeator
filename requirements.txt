@@ -13,6 +13,7 @@ imageio-ffmpeg>=0.5
 numpy
 pillow>=10.1
 requests
+onnxruntime>=1.17  # anime face finder for lip sync
 # voices
 kokoro>=0.9.4
 soundfile

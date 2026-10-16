@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from .camera import cover_frame, still_frame
 from .fonts import font_for, wrap_text
+from .lipsync import MOUTH_STATES, mouth_track
 from .media import SAMPLE_RATE, ffmpeg_exe, load_audio, read_video_frames, run_ffmpeg, save_wav
 
 log = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class TimedLine:
     speaker: str = ""
     narration: bool = False
     audio: Path | None = None
+    lipsync: bool = False  # move the on-screen mouth with this line
 
 
 @dataclass
@@ -40,6 +42,7 @@ class ShotPlan:
     lines: list[TimedLine] = field(default_factory=list)
     sfx: list[tuple[float, Path]] = field(default_factory=list)
     seed: int = 0
+    mouths: dict[str, Path] | None = None  # lip sync pictures: closed / half / open
 
 
 @dataclass
@@ -175,6 +178,9 @@ class _ShotFrames:
             self.still = Image.open(plan.keyframe).convert("RGB")
         if self.still is None and not self.clip_frames:
             self.still = Image.new("RGB", size, (20, 20, 30))
+        self.mouths, self.track = None, None
+        if not self.clip_frames and plan.mouths and all(Path(plan.mouths[s]).exists() for s in MOUTH_STATES):
+            self.mouths = [Image.open(plan.mouths[s]).convert("RGB") for s in MOUTH_STATES]
 
     def frame(self, i: int, n: int) -> np.ndarray:
         if self.clip_frames:
@@ -183,8 +189,13 @@ class _ShotFrames:
             stretch = min(1.5, max(1.0, (n / self.fps) / clip_seconds))
             idx = min(len(self.clip_frames) - 1, int(i / self.fps * self.clip_fps / stretch))
             return cover_frame(self.clip_frames[idx], self.size).copy()
+        still = self.still
+        if self.mouths:
+            if self.track is None or len(self.track) != n:
+                self.track = mouth_track(self.plan.lines, n, self.fps)
+            still = self.mouths[self.track[i]]
         t = i / max(1, n - 1)
-        return still_frame(self.still, self.plan.camera, t, self.size, i, self.plan.seed).copy()
+        return still_frame(still, self.plan.camera, t, self.size, i, self.plan.seed).copy()
 
 
 # ---------------------------------------------------------------- audio

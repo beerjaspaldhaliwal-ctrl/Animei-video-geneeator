@@ -19,6 +19,16 @@ from dataclasses import dataclass, field
 
 CAMERA_MOVES = ["static", "zoom_in", "zoom_out", "pan_left", "pan_right", "pan_up", "pan_down", "shake"]
 ANIMATE_MODES = ["motion", "ai", "still"]
+LIPSYNC_MODES = {
+    "auto": "auto",
+    "on": "auto",
+    "yes": "auto",
+    "off": "off",
+    "no": "off",
+    "none": "off",
+    "left": "left",
+    "right": "right",
+}
 NARRATOR_NAMES = {"NARRATOR", "NARRATION", "VOICEOVER", "V.O."}
 
 _KEYWORD_RE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9 _.'\-]{0,40}?)\s*(?:\(([^)]*)\))?\s*:\s*(.*)$")
@@ -44,6 +54,9 @@ _OPTION_ALIASES = {
     "place": "location",
     "music": "music",
     "bgm": "music",
+    "lipsync": "lipsync",
+    "lip_sync": "lipsync",
+    "lips": "lipsync",
 }
 
 
@@ -71,6 +84,7 @@ class Shot:
     animate: str = ""
     motion: str = ""
     characters: list[str] | None = None
+    lipsync: str = ""  # "" (auto) | auto | off | left | right
     lines: list[Line] = field(default_factory=list)
     line_no: int = 0  # 1-based line in the script, 0 when created implicitly
     from_action: bool = False  # written as a plain line without "SHOT:"
@@ -154,6 +168,12 @@ def _apply_shot_options(shot: Shot, options: dict, line_no: int, warnings: list[
             warnings.append(f"Line {line_no}: animate must be one of: {', '.join(ANIMATE_MODES)}")
     if "motion" in options:
         shot.motion = options["motion"]
+    if "lipsync" in options:
+        mode = LIPSYNC_MODES.get(options["lipsync"].strip().lower())
+        if mode:
+            shot.lipsync = mode
+        else:
+            warnings.append(f"Line {line_no}: lipsync must be one of: auto, off, left, right")
     if "characters" in options:
         value = options["characters"].strip()
         shot.characters = (

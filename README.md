@@ -13,6 +13,7 @@ paid APIs. Everything runs on your PC with free, open-source AI models.
 | 🏞️ Storyboard | Draws every shot as an anime keyframe | Animagine XL 4.0 (any SDXL anime model works) |
 | 🎞️ Animation | Camera moves (pan, zoom, shake) **or** real AI motion | LTX-Video or Wan 2.2 |
 | 🗣️ Voice acting | A different voice per character, with emotions | Kokoro (offline) or free Edge voices (incl. Japanese) |
+| 👄 Lip sync | The talking character's mouth opens and closes with the voice, anime style | anime face finder + Animagine inpainting |
 | 🎵 Music | Background music for each scene, plus an opening theme | MusicGen |
 | 💥 Sound effects | Door creaks, explosions, wind... | AudioLDM |
 | 🎬 Editing | Timing, subtitles, fades, title and "To be continued" cards, music ducking | built in (ffmpeg) |
@@ -117,6 +118,23 @@ Shot options (after `|`):
 * `motion:` what should move in the AI animation, e.g. `hair and skirt blowing in the wind`
 * `characters:` who's on screen (default: characters named in the shot)
 * `seed:` which picture variation to use (the Storyboard tab sets this for you)
+* `lipsync:` `auto` (default), `off`, or `left` / `right` to choose which face talks when two people are on screen
+
+## Lip sync
+
+When a character who is **on screen** speaks, Anime Studio finds their face, draws three mouth
+shapes (closed, half open, open) into the keyframe, and switches between them in time with the
+voice, changing every 2 frames like real TV anime ("kuchipaku"). The rest of the picture never changes.
+
+* It's automatic. Turn it off for the whole episode with the **Lip sync** tick box, or per shot with `| lipsync: off`.
+* Storyboard tab → pick a shot → **👄 Preview lip sync mouths** shows the three mouth shapes.
+* It works on picture shots (camera moves). AI-animated shots make their own movement, so
+  Anime Studio asks the video model to show the character talking instead.
+* Characters seen from behind or too small to find get no lip sync. Narration and off-screen
+  voices never move anyone's mouth.
+* In two-person shots the biggest face talks. Use `| lipsync: left` or `| lipsync: right` to pick the other one,
+  or better, give each speaker their own close-up shot.
+* Lip sync costs about 1.5× the drawing time of a keyframe for each talking shot (done once, then cached).
 
 ## Tips for a good series
 
@@ -182,6 +200,7 @@ Anime Studio's own code is yours to use. The AI models have their own licenses:
 |---|---|---|
 | Animagine XL 4.0 | CreativeML Open RAIL++-M | ✅ allowed, with its use restrictions |
 | IP-Adapter, Kokoro, Wan 2.2 | Apache 2.0 | ✅ |
+| Anime face detector (deepghs, for lip sync) | MIT | ✅ |
 | LTX-Video | LTX-Video open weights license | ⚠️ read its license first |
 | Edge voices | Microsoft service terms | ⚠️ check Microsoft's terms |
 | **MusicGen** | **CC-BY-NC 4.0** | ❌ **non-commercial only** |
