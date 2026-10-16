@@ -215,7 +215,9 @@ class ImageEngine:
 
         pipe, kwargs = self._prepare(prompt, negative, seed, reference, reference_scale, loras)
         if getattr(pipe, "_anime_inpaint", None) is None:
-            pipe._anime_inpaint = StableDiffusionXLInpaintPipeline.from_pipe(pipe)  # shares the loaded model
+            # Shares the loaded model. The dtype must be given: from_pipe otherwise converts
+            # the shared weights to float32 in place, doubling memory use.
+            pipe._anime_inpaint = StableDiffusionXLInpaintPipeline.from_pipe(pipe, torch_dtype=pipe.unet.dtype)
             pipe._anime_inpaint.set_progress_bar_config(disable=True)
         result = pipe._anime_inpaint(
             image=image, mask_image=mask, width=image.width, height=image.height, strength=strength, **kwargs
